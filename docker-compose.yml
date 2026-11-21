@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: inventario-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-inventario}
+      POSTGRES_USER: ${DB_USER:-inventario_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-inventario_pass}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - inventario-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-inventario_user} -d ${DB_NAME:-inventario}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: inventario-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-inventario}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-inventario_user}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-inventario_pass}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    ports:
+      - "8080:8080"
+    networks:
+      - inventario-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  frontend:
+    build: ./frontend
+    container_name: inventario-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    networks:
+      - inventario-net
+
+volumes:
+  pgdata:
+
+networks:
+  inventario-net:
+    driver: bridge
